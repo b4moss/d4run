@@ -1,0 +1,12 @@
+services:
+  app:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile.prod
+    container_name: {project-name}
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+

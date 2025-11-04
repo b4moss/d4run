@@ -1,0 +1,13 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Required tools (needed for degit/nuxi)
+RUN apk add --no-cache git curl bash ca-certificates && update-ca-certificates || true \
+  && corepack enable || true
+
+# Port
+EXPOSE 3000
+
+# By default, run the dev server (expects package.json exists in project)
+CMD ["npm", "run", "dev"]

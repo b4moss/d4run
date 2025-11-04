@@ -1,0 +1,17 @@
+# Builder
+FROM node:20-alpine AS builder
+WORKDIR /src/frontend
+RUN apk add --no-cache git curl bash ca-certificates && update-ca-certificates || true \
+  && corepack enable || true
+COPY ./frontend/ /src/frontend/
+RUN if [ -f package.json ]; then npm ci || npm install; fi \
+ && (npx -y nuxi@latest generate || npx -y nuxi@latest build || true)
+
+# Runtime (static)
+FROM nginx:alpine
+# Nuxt 3 static output lives in .output/public
+COPY --from=builder /src/frontend/.output/public /usr/share/nginx/html
+# Use custom nginx config to listen on port 3000
+COPY docker/frontend/nuxt/nginx.conf /etc/nginx/nginx.conf
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]

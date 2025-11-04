@@ -1,0 +1,31 @@
+# Build stage
+FROM golang:1.24-alpine AS builder
+WORKDIR /src
+
+# Required tools
+RUN apk add --no-cache ca-certificates tzdata git
+
+# Resolve dependencies
+COPY ./app/go.mod ./
+RUN go mod download
+
+# Copy application source
+COPY ./app/ ./
+
+# Build statically (CGO disabled)
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ENV CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH}
+RUN go build -trimpath -ldflags='-s -w' -o /out/api ./
+
+# Run stage
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /app
+# Include root certificates (for outbound HTTPS)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# Copy binary
+COPY --from=builder /out/api /app/api
+USER nonroot:nonroot
+EXPOSE 8080
+ENTRYPOINT ["/app/api"]
+

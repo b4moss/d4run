@@ -1,0 +1,10 @@
+  frontend:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: docker/frontend/nuxt/Dockerfile.prod
+    container_name: {project-name}-frontend
+    environment:
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"

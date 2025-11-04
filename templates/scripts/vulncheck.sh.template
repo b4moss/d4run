@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+cd "${APP_DIR:-app}" 2>/dev/null || true
+if ! command -v govulncheck >/dev/null 2>&1; then
+  echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@latest
+fi
+echo "Running vulnerability scan..."
+if govulncheck ./...; then echo "✅ No vulnerabilities found."; else echo "⚠️ Vulnerabilities found or errors."; exit 1; fi

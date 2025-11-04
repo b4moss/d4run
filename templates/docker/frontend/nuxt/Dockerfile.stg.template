@@ -1,0 +1,15 @@
+# Builder
+FROM node:20-alpine AS builder
+WORKDIR /src
+RUN apk add --no-cache git curl bash ca-certificates && update-ca-certificates || true \
+  && corepack enable || true
+COPY ./ /src/
+# Assumes dependencies already exist (if not, create via frontend-init)
+RUN if [ -f package.json ]; then npm ci || npm install; fi \
+ && (npx -y nuxi@latest generate || npx -y nuxi@latest build || true)
+
+# Runtime (static)
+FROM nginx:alpine
+COPY --from=builder /src/.output/public /usr/share/nginx/html
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]

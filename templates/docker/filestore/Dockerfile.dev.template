@@ -1,0 +1,11 @@
+FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+
+# Required tools
+RUN apt-get update && apt-get install -y git bash curl unzip wget && rm -rf /var/lib/apt/lists/*
+
+# Add gcloud to PATH
+ENV PATH="/google-cloud-sdk/bin:${PATH}"
+
+# Start Firestore Emulator
+CMD ["/google-cloud-sdk/bin/gcloud", "beta", "emulators", "firestore", "start", "--host-port=0.0.0.0:8081", "--quiet"]
+

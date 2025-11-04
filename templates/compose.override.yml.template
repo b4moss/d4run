@@ -1,0 +1,26 @@
+services:
+  app:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile.dev
+    container_name: {project-name}-dev
+    working_dir: /app
+    command: /go/bin/air
+    volumes:
+      - ./app:/app
+      - go-mod-cache:/go/pkg/mod
+    env_file:
+      - .env
+    environment:
+      - GIN_MODE=debug
+    ports:
+      - "8080:8080"
+{SERVICE_DEPENDS_ON}
+
+{SERVICES}
+
+volumes:
+  go-mod-cache:
+{VOLUMES}
+

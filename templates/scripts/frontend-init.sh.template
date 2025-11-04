@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Move from repo root to frontend directory
+cd "$(dirname "$0")/.." || exit 1
+ROOT_DIR="$(pwd)"
+FRONTEND_DIR="${ROOT_DIR}/frontend"
+mkdir -p "$FRONTEND_DIR"
+cd "$FRONTEND_DIR"
+
+# Initialize Nuxt 3 with latest v3 (default: Docker; use --local for host)
+USE_DOCKER=${USE_DOCKER:-true}
+for arg in "$@"; do [ "$arg" = "--local" ] && USE_DOCKER=false; done
+
+if [ "$USE_DOCKER" = true ]; then
+  echo "Using Docker to initialize Nuxt 3..."
+  # Create files as the current host user (preserve permissions)
+  UID_GID="$(id -u):$(id -g)"
+  docker run --rm -u "$UID_GID" -v "$FRONTEND_DIR":/app -w /app \
+    -e HOME=/app -e npm_config_cache=/app/.npm -e CI=1 -e NUXT_TELEMETRY_DISABLED=1 -e TERM=dumb -e FORCE_COLOR=0 node:20 \
+    sh -lc "mkdir -p /app/.npm && (npx -y nuxi@latest init . --force --no-telemetry </dev/null || npx -y degit nuxt/starter . --force </dev/null) && npm i"
+else
+  if command -v pnpm >/dev/null 2>&1; then
+    CI=1 NUXT_TELEMETRY_DISABLED=1 TERM=dumb FORCE_COLOR=0 pnpm dlx nuxi@latest init . --force </dev/null || pnpm dlx degit nuxt/starter . --force </dev/null
+    pnpm install
+  else
+    CI=1 NUXT_TELEMETRY_DISABLED=1 TERM=dumb FORCE_COLOR=0 npx -y nuxi@latest init . --force </dev/null || npx -y degit nuxt/starter . --force </dev/null
+    npm install
+  fi
+fi
+
+echo "Nuxt 3 initialization completed at: $FRONTEND_DIR"

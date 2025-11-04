@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+PROJECT_ID="${1:-${GOOGLE_CLOUD_PROJECT:-}}"
+if [ -z "$PROJECT_ID" ]; then echo "Usage: $0 [PROJECT_ID]" >&2; exit 1; fi
+SERVICE_ACCOUNT="${2:-${PROJECT_ID:+b4m-receipt-process@${PROJECT_ID}.iam.gserviceaccount.com}}"
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)")
+CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+echo "Project: $PROJECT_ID (#$PROJECT_NUMBER)"; echo "SA: $SERVICE_ACCOUNT"; echo
+# Checks
+check_api(){ local api=$1; gcloud services list --project="$PROJECT_ID" --enabled --filter="name:$api" --format="value(name)" | grep -q "$api" && echo "✓ $api" || echo "✗ $api"; }
+check_api cloudbuild.googleapis.com
+check_api storage-api.googleapis.com
+check_api run.googleapis.com
+# IAM roles
+roles=(roles/cloudbuild.builds.builder roles/storage.admin roles/run.admin roles/iam.serviceAccountUser)
+for r in "${roles[@]}"; do
+  gcloud projects get-iam-policy "$PROJECT_ID" --flatten="bindings[].members" \
+    --filter="bindings.members:serviceAccount:${SERVICE_ACCOUNT} AND bindings.role:${r}" --format="value(bindings.role)"|grep -q "$r"&&echo "✓ $r"||echo "✗ $r"
+done
+echo "Done"

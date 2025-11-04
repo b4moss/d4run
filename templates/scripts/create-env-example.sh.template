@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+cat > .env.example << 'EOF'
+# Google Cloud
+GOOGLE_CLOUD_PROJECT=your-project-id
+GCP_REGION=asia-northeast1
+
+# API keys
+CLOUDRUN_API_KEY=your-api-key-here
+
+# App config
+CACHE_TTL=2160h
+LOG_LEVEL=INFO
+
+# Local dev (optional)
+SERVER_PORT=8080
+EOF
+echo "Created .env.example"

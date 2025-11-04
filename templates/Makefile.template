@@ -1,0 +1,149 @@
+## Docker Compose helper Makefile
+
+COMPOSE_FILE ?= compose.yml
+PROFILE ?=
+# Append --profile only when specified
+COMPOSE := docker compose $(if $(PROFILE),--profile $(PROFILE),) -f $(COMPOSE_FILE)
+# Executor using compose.yml + compose.override.yml (for frontend/dev)
+COMPOSE_WITH_OVERRIDE := docker compose -f compose.yml -f compose.override.yml
+
+# Optional variables
+SERVICE ?=
+SVC ?=
+CMD ?=
+
+.PHONY: help up down build build-nc start stop restart logs ps exec sh pull reup clean prune test test-cover test-html build-prod buildx-setup build-prod-multi vulncheck
+
+help:
+	@echo "Usage: make <target> [PROFILE=dev] [SERVICE=name] [SVC=name] [CMD=\"...\"]"
+	@echo
+	@echo "Targets:"
+	@echo "  up          - Start services in background (PROFILE/SERVICE selectable)"
+	@echo "  down        - Stop and remove containers, networks"
+	@echo "  build       - Build images (SERVICE to limit)"
+	@echo "  build-nc    - Build images without cache (SERVICE to limit)"
+	@echo "  start       - Start existing containers (SERVICE to limit)"
+	@echo "  stop        - Stop running containers (SERVICE to limit)"
+	@echo "  restart     - Restart containers (SERVICE to limit)"
+	@echo "  logs        - Follow logs (PROFILE/SERVICE selectable)"
+	@echo "  ps          - Show container status"
+	@echo "  pull        - Pull images (SERVICE to limit)"
+	@echo "  exec        - Exec into a service: SVC=name CMD=\"bash\""
+	@echo "  sh          - Open a shell into SVC (tries /bin/sh then /bin/bash)"
+	@echo "  reup        - Recreate: down then up"
+	@echo "  clean       - Down with volumes and remove orphans"
+	@echo "  prune       - docker system prune -f"
+	@echo "  build-prod  - Build prod image (local arch)"
+	@echo "  build-prod-multi - Buildx multi-arch (linux/amd64,arm64)"
+	@echo "  test        - Run go tests in container (PROFILE/SVC required)"
+	@echo "  test-cover  - Run tests with coverage summary (PROFILE/SVC required)"
+	@echo "  test-html   - Run tests and generate coverage.html (PROFILE/SVC required)"
+	@echo "  vulncheck   - Check for known vulnerabilities in dependencies (local or in container)"
+
+up:
+	@if [ "$(PROFILE)" = "prod" ]; then \
+		docker compose --profile prod -f compose.yml up -d $(SERVICE); \
+	else \
+		docker compose --profile dev -f compose.yml -f compose.override.yml up -d $(SERVICE); \
+	fi
+
+down:
+	@if [ "$(PROFILE)" = "dev" ]; then \
+		docker compose -f compose.yml -f compose.override.yml down; \
+	elif [ "$(PROFILE)" = "prod" ]; then \
+		docker compose --profile prod -f compose.yml down; \
+	else \
+		docker compose --profile prod -f compose.yml down || true; \
+		docker compose -f compose.yml -f compose.override.yml down || true; \
+	fi
+
+build:
+	$(COMPOSE) build $(SERVICE)
+
+build-nc:
+	$(COMPOSE) build --no-cache $(SERVICE)
+
+start:
+	$(COMPOSE) start $(SERVICE)
+
+stop:
+	$(COMPOSE) stop $(SERVICE)
+
+restart:
+	$(COMPOSE) restart $(SERVICE)
+
+logs:
+	$(COMPOSE) logs -f $(SERVICE)
+
+ps:
+	$(COMPOSE) ps
+
+pull:
+	$(COMPOSE) pull $(SERVICE)
+
+exec:
+	@if [ -z "$(SVC)" ]; then echo "Specify SVC=name (and optionally CMD)"; exit 1; fi; \
+		if [ -z "$(CMD)" ]; then echo "Specify CMD=\"command\""; exit 1; fi; \
+		$(COMPOSE) exec $(SVC) sh -lc '$(CMD)'
+
+sh:
+	@if [ -z "$(SVC)" ]; then echo "Specify SVC=name"; exit 1; fi; \
+		$(COMPOSE) exec $(SVC) /bin/sh || $(COMPOSE) exec $(SVC) /bin/bash
+
+reup:
+	$(MAKE) down
+	$(MAKE) up SERVICE=$(SERVICE)
+
+clean:
+	$(COMPOSE) down -v --remove-orphans
+
+prune:
+	docker system prune -f
+
+IMAGE_NAME ?= {project-name}
+IMAGE_TAG ?= latest
+
+build-prod:
+	docker build -f docker/app/Dockerfile.prod -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+buildx-setup:
+	@if ! docker buildx inspect multiarch >/dev/null 2>&1; then \
+		docker buildx create --name multiarch --use; \
+	fi
+
+build-prod-multi: buildx-setup
+	docker buildx build --platform linux/amd64,linux/arm64 -f docker/app/Dockerfile.prod -t $(IMAGE_NAME):$(IMAGE_TAG) --push .
+
+# --- Testing in container ---
+TEST_PKGS ?= ./...
+# Coverage target packages (to collect coverage from external test packages)
+COVER_PKGS ?= ./...
+
+test:
+	@if [ -z "$(SVC)" ]; then echo "Specify SVC=name (e.g. SVC=app)"; exit 1; fi; \
+		$(COMPOSE) run --rm -e GIN_MODE=test $(SVC) sh -lc '/usr/local/go/bin/go mod tidy && /usr/local/go/bin/go test -v -count=1 -race $(TEST_PKGS)'
+
+test-cover:
+	@if [ -z "$(SVC)" ]; then echo "Specify SVC=name (e.g. SVC=app)"; exit 1; fi; \
+		$(COMPOSE) run --rm -e GIN_MODE=test $(SVC) sh -lc '/usr/local/go/bin/go mod tidy && /usr/local/go/bin/go test -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) $(TEST_PKGS) && /usr/local/go/bin/go tool cover -func=coverage.out'
+
+test-html:
+	@if [ -z "$(SVC)" ]; then echo "Specify SVC=name (e.g. SVC=app)"; exit 1; fi; \
+		$(COMPOSE) run --rm -e GIN_MODE=test $(SVC) sh -lc '/usr/local/go/bin/go mod tidy && /usr/local/go/bin/go test -coverprofile=coverage.out -coverpkg=$(COVER_PKGS) $(TEST_PKGS) && /usr/local/go/bin/go tool cover -html=coverage.out -o coverage.html && ls -l coverage.html'
+
+# --- Security checks ---
+vulncheck:
+	@echo "Checking for known vulnerabilities in dependencies..."
+	@if command -v go >/dev/null 2>&1; then \
+		echo "Running locally..."; \
+		if ! command -v govulncheck >/dev/null 2>&1; then \
+			echo "Installing govulncheck..."; \
+			go install golang.org/x/vuln/cmd/govulncheck@latest; \
+		fi; \
+		cd app && govulncheck ./...; \
+	else \
+		echo "Go not found locally. Running in container..."; \
+		if [ -z "$(SVC)" ]; then SVC=app; fi; \
+		$(COMPOSE) run --rm $(SVC) sh -c '/usr/local/go/bin/go install golang.org/x/vuln/cmd/govulncheck@latest && cd /app && /go/bin/govulncheck ./...'; \
+	fi
+

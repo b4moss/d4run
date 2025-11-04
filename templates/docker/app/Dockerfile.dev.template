@@ -1,0 +1,17 @@
+FROM golang:1.24
+
+WORKDIR /app
+
+# Development: install air for hot reload
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://raw.githubusercontent.com/air-verse/air/master/install.sh | \
+       sh -s -- -b /go/bin v1.52.3
+
+# Dummy copy for go mod cache (speed up first dependency download)
+COPY ./app/go.mod /app/go.mod
+RUN go mod download || true
+
+# Entrypoint
+CMD ["/go/bin/air"]
+

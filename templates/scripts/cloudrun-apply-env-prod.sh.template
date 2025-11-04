@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+PROJECT_ID="${1:-${GOOGLE_CLOUD_PROJECT:-}}"; REGION="${2:-${GCP_REGION:-asia-northeast1}}"; ENV_FILE="${3:-.env.prod}"
+SERVICE_NAME="${SERVICE_NAME:-{project-name}-prd}"
+"$(dirname "$0")/cloudrun-apply-env.sh" "$SERVICE_NAME" "$PROJECT_ID" "$REGION" "$ENV_FILE"

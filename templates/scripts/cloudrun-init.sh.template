@@ -1,0 +1,46 @@
+#!/bin/bash
+# Create a minimal Cloud Run service (first-time init)
+# Example:
+#   ./scripts/cloudrun-init.sh {project-name}-stg gcr.io/PROJECT_ID/{project-name}:staging PROJECT_ID asia-northeast1 [SERVICE_ACCOUNT]
+
+set -euo pipefail
+
+SERVICE_NAME="${1:-}"
+IMAGE_URI="${2:-}"
+PROJECT_ID="${3:-${GOOGLE_CLOUD_PROJECT:-}}"
+REGION="${4:-${GCP_REGION:-asia-northeast1}}"
+SERVICE_ACCOUNT_OPT="${5:-}"
+
+if [ -z "$SERVICE_NAME" ] || [ -z "$IMAGE_URI" ] || [ -z "$PROJECT_ID" ]; then
+  echo "Usage: $0 <SERVICE_NAME> <IMAGE_URI> <PROJECT_ID> <REGION> [SERVICE_ACCOUNT]" >&2
+  exit 1
+fi
+
+echo "Project: $PROJECT_ID"
+echo "Region : $REGION"
+echo "Service: $SERVICE_NAME"
+echo "Image  : $IMAGE_URI"
+
+gcloud config set project "$PROJECT_ID" >/dev/null
+
+ARGS=(
+  run deploy "$SERVICE_NAME"
+  --image "$IMAGE_URI"
+  --platform managed
+  --region "$REGION"
+  --allow-unauthenticated
+  --port 8080
+  --memory 512Mi
+  --cpu 1
+  --timeout 300
+  --max-instances 5
+)
+
+if [ -n "$SERVICE_ACCOUNT_OPT" ]; then
+  ARGS+=(--service-account "$SERVICE_ACCOUNT_OPT")
+fi
+
+gcloud "${ARGS[@]}"
+
+echo "Created (or updated) Cloud Run service: $SERVICE_NAME"
+

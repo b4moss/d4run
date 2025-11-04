@@ -1,0 +1,144 @@
+#!/bin/bash
+# Grant Cloud Build related permissions
+# 
+# Usage:
+#   ./scripts/grant-cloud-build-permissions.sh [PROJECT_ID]
+#
+# Example:
+#   ./scripts/grant-cloud-build-permissions.sh {project-id}
+
+set -euo pipefail
+
+# Read project ID
+PROJECT_ID="${1:-${GOOGLE_CLOUD_PROJECT:-}}"
+
+if [ -z "$PROJECT_ID" ]; then
+    echo "エラー: プロジェクトIDが指定されていません"
+    echo "使用方法: $0 [PROJECT_ID]"
+    echo "または環境変数で設定: export GOOGLE_CLOUD_PROJECT=your-project-id"
+    exit 1
+fi
+
+SERVICE_ACCOUNT="{project-name}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+echo "プロジェクトID: $PROJECT_ID"
+echo "サービスアカウント: $SERVICE_ACCOUNT"
+echo ""
+
+# Enable required APIs
+echo "必要なAPIを有効化中..."
+gcloud services enable cloudbuild.googleapis.com --project="$PROJECT_ID" || echo "Cloud Build APIの有効化に失敗しました（既に有効な可能性があります）"
+gcloud services enable storage-api.googleapis.com --project="$PROJECT_ID" || echo "Storage APIの有効化に失敗しました（既に有効な可能性があります）"
+gcloud services enable storage-component.googleapis.com --project="$PROJECT_ID" || echo "Storage Component APIの有効化に失敗しました（既に有効な可能性があります）"
+
+# Grant Cloud Build Editor role
+echo "Cloud Build Editor権限を付与中..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/cloudbuild.builds.builder" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+
+# Grant Cloud Build Service Account role (required to run builds)
+echo "Cloud Build Service Account権限を付与中..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/cloudbuild.builds.editor" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+
+# Grant Storage Admin role (for source uploads)
+echo "Storage Admin権限を付与中..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/storage.admin" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+
+# Grant Service Account User role (to actAs service accounts)
+echo "Service Account User権限を付与中..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/iam.serviceAccountUser" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+
+# Grant Cloud Run Admin role (for deployments)
+echo "Cloud Run Admin権限を付与中..."
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${SERVICE_ACCOUNT}" \
+  --role="roles/run.admin" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+
+# Create bucket for Cloud Build source uploads
+echo ""
+echo "Cloud Buildのソースアップロード用バケットを作成中..."
+BUILD_BUCKET="${PROJECT_ID}_cloudbuild"
+
+# Get project number
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format="value(projectNumber)" 2>/dev/null || echo "")
+
+if [ -z "$PROJECT_NUMBER" ]; then
+    echo "警告: プロジェクト番号を取得できませんでした"
+    echo "バケットの作成をスキップします"
+else
+    echo "プロジェクト番号: $PROJECT_NUMBER"
+    
+    # Cloud Build default service account
+    CLOUD_BUILD_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+    echo "Cloud Buildサービスアカウント: $CLOUD_BUILD_SA"
+    
+    # Check if bucket exists
+    if gcloud storage buckets describe "gs://${BUILD_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
+        echo "バケット ${BUILD_BUCKET} は既に存在します"
+    else
+        echo "バケット ${BUILD_BUCKET} を作成中..."
+        gcloud storage buckets create "gs://${BUILD_BUCKET}" \
+          --project="$PROJECT_ID" \
+          --location=US \
+          --default-storage-class=STANDARD || echo "バケットの作成に失敗しました（権限が不足している可能性があります）"
+    fi
+    
+    # Grant bucket access to Cloud Build service account
+    echo ""
+    echo "Cloud Buildサービスアカウントにバケットへのアクセス権限を付与中..."
+    gcloud storage buckets add-iam-policy-binding "gs://${BUILD_BUCKET}" \
+      --member="serviceAccount:${CLOUD_BUILD_SA}" \
+      --role="roles/storage.admin" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+    
+    # Grant push permission to Container Registry
+    echo ""
+    echo "Cloud BuildサービスアカウントにContainer Registryへのプッシュ権限を付与中..."
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${CLOUD_BUILD_SA}" \
+      --role="roles/storage.admin" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+    
+    # Grant deploy permission to Cloud Run
+    echo ""
+    echo "Cloud BuildサービスアカウントにCloud Runへのデプロイ権限を付与中..."
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${CLOUD_BUILD_SA}" \
+      --role="roles/run.admin" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+    
+    # Allow Cloud Build service account to use other service accounts
+    echo ""
+    echo "Cloud Buildサービスアカウントにサービスアカウントを使用する権限を付与中..."
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${CLOUD_BUILD_SA}" \
+      --role="roles/iam.serviceAccountUser" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+    
+    # Grant Cloud Build Editor role to service account (required to run builds)
+    echo ""
+    echo "Cloud BuildサービスアカウントにCloud Build Editor権限を付与中..."
+    gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${CLOUD_BUILD_SA}" \
+      --role="roles/cloudbuild.builds.editor" || echo "権限の付与に失敗しました（既に付与されている可能性があります）"
+fi
+
+echo ""
+echo "完了！"
+echo ""
+echo "付与された権限:"
+echo "  - roles/cloudbuild.builds.builder (Cloud Buildのビルド実行)"
+echo "  - roles/cloudbuild.builds.editor (Cloud Buildの編集)"
+echo "  - roles/storage.admin (Storageへのアクセス)"
+echo "  - roles/iam.serviceAccountUser (サービスアカウントの使用)"
+echo "  - roles/run.admin (Cloud Runのデプロイ)"
+echo ""
+echo "作成された/確認されたバケット:"
+echo "  - gs://${BUILD_BUCKET} (Cloud Buildソースアップロード用)"
+echo ""
+echo "注意: Cloud Build APIが有効になっていることを確認してください："
+echo "  gcloud services enable cloudbuild.googleapis.com --project=$PROJECT_ID"
+

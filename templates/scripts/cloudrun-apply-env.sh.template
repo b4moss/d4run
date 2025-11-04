@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+SERVICE_NAME="${1:-}"; PROJECT_ID="${2:-${GOOGLE_CLOUD_PROJECT:-}}"; REGION="${3:-${GCP_REGION:-asia-northeast1}}"; ENV_FILE="${4:-.env}"
+[ -z "$SERVICE_NAME" ]&&{ echo "Usage: $0 <SERVICE_NAME> <PROJECT_ID> [REGION] [ENV_FILE]" >&2; exit 1; }
+[ -f "$ENV_FILE" ]||{ echo "env not found: $ENV_FILE" >&2; exit 1; }
+gcloud config set project "$PROJECT_ID" >/dev/null
+UPDATE_ARGS=(run services update "$SERVICE_NAME" --region "$REGION")
+DELIM="|"; VARS="^${DELIM}^"; COUNT=0
+while IFS= read -r raw || [ -n "$raw" ]; do case "$raw" in \#*|"") continue;; esac; line=$(echo "$raw"|sed 's/^export[[:space:]]\+//'); key=${line%%=*}; val=${line#*=}; key=$(echo "$key"|tr -d '[:space:]'); val=$(echo -n "$val"|sed "s/^[[:space:]]*[\"']\?//;s/[\"']\?[[:space:]]*$//"); [ -z "$key" ]&&continue; [ -z "$val" ]&&continue; if [ "$key" = "GCP_REGION" ]||[ "$key" = "GOOGLE_CLOUD_PROJECT" ]||[ "$key" = "PORT" ]||[ "$key" = "SERVER_PORT" ]; then continue; fi; [ $COUNT -gt 0 ]&&VARS+="${DELIM}"; esc_val=$(printf '%s' "$val"|sed "s/${DELIM}/\\${DELIM}/g"); VARS+="${key}=${esc_val}"; COUNT=$((COUNT+1)); done < "$ENV_FILE"
+[ $COUNT -gt 0 ]&&UPDATE_ARGS+=(--update-env-vars "$VARS"); UPDATE_ARGS+=(--update-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID}")
+gcloud "${UPDATE_ARGS[@]}"
+echo "Applied env from ${ENV_FILE} to ${SERVICE_NAME}"

@@ -1,0 +1,13 @@
+  firestore:
+    build:
+      context: ./docker
+      dockerfile: docker/storage/Dockerfile.dev
+    container_name: {project-name}-firestore
+    ports:
+      - "8081:8081"
+    volumes:
+      - firestore-data:/data
+    environment:
+      - JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+      - PATH=/usr/lib/jvm/java-21-openjdk/bin:$PATH
+

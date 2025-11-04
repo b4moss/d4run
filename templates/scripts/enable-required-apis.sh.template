@@ -1,0 +1,30 @@
+#!/bin/bash
+# Script to enable required GCP APIs at once
+set -euo pipefail
+PROJECT_ID="${1:-${GOOGLE_CLOUD_PROJECT:-}}"
+if [ -z "$PROJECT_ID" ]; then
+  echo "エラー: プロジェクトIDが指定されていません" >&2
+  echo "使用方法: $0 [PROJECT_ID]" >&2
+  exit 1
+fi
+CURRENT_ACCOUNT=$(gcloud config get-value account 2>/dev/null || echo "")
+if [[ "$CURRENT_ACCOUNT" == *"@"*".iam.gserviceaccount.com" ]]; then
+  read -p "⚠️ サービスアカウントです。続行しますか？ (y/N): " -n 1 -r; echo; [[ $REPLY =~ ^[Yy]$ ]] || exit 1
+fi
+APIS=(
+  cloudresourcemanager.googleapis.com
+  cloudbuild.googleapis.com
+  run.googleapis.com
+  storage-api.googleapis.com
+  storage-component.googleapis.com
+  containerregistry.googleapis.com
+  artifactregistry.googleapis.com
+)
+for api in "${APIS[@]}"; do
+  if gcloud services list --project="$PROJECT_ID" --enabled --filter="name:$api" --format="value(name)" | grep -q "$api"; then
+    echo "✓ $api は有効"
+  else
+    echo "有効化: $api"; gcloud services enable "$api" --project="$PROJECT_ID" || true
+  fi
+done
+echo "完了"
