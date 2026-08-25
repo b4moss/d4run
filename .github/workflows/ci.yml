@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck bats kcov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck bats kcov
+
+      - name: Shellcheck
+        run: shellcheck init-project.sh || true
+
+      - name: Bats smoke
+        run: |
+          mkdir -p tests
+          cat > tests/smoke.bats <<'BATS'
+          @test "init-project.sh is readable" {
+            [ -f init-project.sh ]
+          }
+          @test "init-project.sh has shebang" {
+            run head -n 1 init-project.sh
+            [[ "$output" == "#!"* ]]
+          }
+          BATS
+          bats tests/
+
+      - name: Coverage with kcov
+        run: |
+          mkdir -p coverage
+          kcov --bash-dont-parse-binary-dir --include-pattern=init-project.sh coverage/ bash -n init-project.sh || true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: coverage
+          fail_ci_if_error: false
+          verbose: true
