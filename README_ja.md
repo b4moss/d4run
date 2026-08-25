@@ -1,5 +1,12 @@
 # d4run
 
+[![CI](https://github.com/b4moss/d4run/actions/workflows/ci.yml/badge.svg)](https://github.com/b4moss/d4run/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/codecov/c/github/b4moss/d4run)](https://codecov.io/gh/b4moss/d4run)
+[![Shell](https://img.shields.io/badge/Shell-Bash-4EAA25?logo=gnubash&logoColor=white)](https://github.com/b4moss/d4run)
+[![Release](https://img.shields.io/github/v/release/b4moss/d4run)](https://github.com/b4moss/d4run/releases)
+[![License](https://img.shields.io/github/license/b4moss/d4run)](https://github.com/b4moss/d4run/blob/main/LICENSE)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/b4moss/d4run/badge)](https://securityscorecards.dev/viewer/?uri=github.com/b4moss/d4run)
+
 Golang + Docker Compose + CloudRun の開発環境を迅速に構築するための雛形生成ツールです。
 
 [English version is here.](./README.md)
@@ -152,5 +159,4 @@ make up
 ## ライセンス
 
 このプロジェクトは、MIT Licenseです。
-
 
